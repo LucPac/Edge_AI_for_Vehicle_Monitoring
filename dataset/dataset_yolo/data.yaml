@@ -1,0 +1,13 @@
+train: D:\Dropbox\GitHub\RASPBERRY_Parking_lot\license_plate\dataset\dataset\train\images
+val: D:\Dropbox\GitHub\RASPBERRY_Parking_lot\license_plate\dataset\dataset\valid\images
+test: D:\Dropbox\GitHub\RASPBERRY_Parking_lot\license_plate\dataset\dataset\test\images
+
+nc: 3
+names: ['car', 'motorcycle', 'plate']
+
+roboflow:
+  workspace: datnguyentan
+  project: vietnam-license-plate-ver1
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/datnguyentan/vietnam-license-plate-ver1/dataset/3
