@@ -6,13 +6,14 @@ from ocr import PlateOCR
 from tracker import TrafficTracker, is_valid_plate
 
 # Khởi tạo
-detector = YOLODetector("models/best.onnx")
-ocr = PlateOCR("models/rec_model.onnx", dict_path="models/plate_dict.txt")
-green_points = np.array([[470, 302], [566, 297], [603, 381], [479, 384]], np.int32)
-red_points = np.array([[200, 300], [450, 300], [450, 400], [200, 400]], np.int32)
+detector = YOLODetector("./tracking+reg_plate/models/best.onnx")
+ocr = PlateOCR("./tracking+reg_plate/models/rec_model.onnx", dict_path="./tracking+reg_plate/models/plate_dict.txt")
+# tọa độ: theo chiều kim đồng hồ, trên trái -> trên phải -> dưới phải -> dưới trái
+green_points = np.array([[437, 135], [541, 127], [1119, 432], [717, 447]], np.int32)
+red_points = np.array([[347, 165], [437, 135], [717, 447], [258, 481]], np.int32)
 traffic_tracker = TrafficTracker(green_points, red_points)
 
-cap = cv2.VideoCapture("D:/Dropbox/GitHub/RASPBERRY_Parking_lot/license_plate/videos_test/camera_duong_pho1.mp4")
+cap = cv2.VideoCapture("./videos_test/camera_duong_pho1.mp4")
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -70,6 +71,16 @@ while cap.isOpened():
             return None
 
         frame = traffic_tracker.update_and_draw(frame, vehicle_detections, plate_detections, read_plate_text)
+
+        # Vẽ shape
+        # 1. Định dạng lại mảng (Bắt buộc với OpenCV)
+        green_poly = green_points.reshape((-1, 1, 2))
+        red_poly = red_points.reshape((-1, 1, 2))
+
+        # 2. vẽ nét đứt/liền lên biến 'frame'
+        # Màu (B, G, R): (0, 255, 0) xanh lá, (0, 0, 255) đỏ
+        cv2.polylines(frame, [green_poly], isClosed=True, color=(0, 255, 0), thickness=2)
+        cv2.polylines(frame, [red_poly], isClosed=True, color=(0, 0, 255), thickness=2)
 
     cv2.imshow("He thong quan ly phuong tien", cv2.resize(frame, (1280, 720)))
     if cv2.waitKey(200) & 0xFF == 27: break
