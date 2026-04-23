@@ -114,3 +114,6 @@ try:
 except ImportError:  # package not installed, skip
     pass
 ```
+
+# Reference
+[Tips for Best YOLOv5 Training Results](https://docs.ultralytics.com/yolov5/tutorials/tips_for_best_training_results/)
