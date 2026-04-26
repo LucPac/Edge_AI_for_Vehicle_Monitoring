@@ -1,10 +1,8 @@
-# Edge AI Smart Vehicle Access System
+# Edge AI Vehicle Access System
 
 ## Overview
 
 This project implements an **Edge AI-based smart vehicle access system** deployed on a Raspberry Pi 4. It combines real-time vehicle detection, tracking, and license plate recognition with a full-stack monitoring platform.
-
----
 
 ## Features
 
@@ -12,14 +10,10 @@ This project implements an **Edge AI-based smart vehicle access system** deploye
 * **License plate recognition** using OCR (PaddleOCR / EasyOCR / CRNN)
 * Optimized models for edge deployment with **TFLite / ONNX**
 
----
-
 ## AI Models
 
 * YOLOv5n (object detection)
 * PaddleOCR (LPR)
-
----
 
 ## Hardware
 
@@ -28,8 +22,6 @@ This project implements an **Edge AI-based smart vehicle access system** deploye
 * Servo motor
 * RC522 (RFID module)
 
----
-
 ## Software
 
 * Python
@@ -37,10 +29,7 @@ This project implements an **Edge AI-based smart vehicle access system** deploye
 * FastAPI (backend)
 * PostgreSQL (database)
 
----
+## Reference
 
-## Project Goal
-
-Build a **low-cost, real-time, edge-based vehicle access system**.
-
----
+[1] [Ultralytics](https://github.com/ultralytics/yolov5), "YOLOv5: PyTorch object detection architectures and models."  
+[2] [PaddlePaddle](https://github.com/PaddlePaddle/PaddleOCR), "PaddleOCR: Awesome multilingual OCR toolkits."
