@@ -12,7 +12,8 @@ Initial testing to evaluate model architectures before edge optimization.
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | **[MobileNet (CRNN)](models/crnn/trainCRNN_paddle_scratch_mv3large_none_bilstm_ctc)** | 81.6% | 16.9 ms | 59.2 | 5.78 MB | Lightweight baseline. |
 | **[ResNet (CRNN)](models/crnn/trainCRNN_paddle_scratch_r34_vd_none_bilstm_ctc)** | 24.5% | 85.5 ms | 11.7 | 93.5 MB | Poor convergence, heavy. |
-| **[SVTR_LCNet (PP-OCRv3)](models/svtr/trainSVTRLCNet_paddle_latinppocrv3)** | **97.8%** | **11.5 ms** | **86.9** | **8.61 MB** | Best accuracy & speed balance. |
+| **[SVTR_LCNet (PP-OCRv3)](models/svtr/trainSVTRLCNet_paddle_latinppocrv3)** | **97.8%** | **11.5 ms** | **86.9** | **8.61 MB** | High accuracy & speed balance. |
+| **[SVTR_LCNet (PP-OCRv4)](models/svtr/trainSVTRLCNet_paddle_enppocrv4)** | 98.3% | 24.7 ms | 40.4 | 7.45 MB | Best accuracy & speed balance. |
 
 ---
 
