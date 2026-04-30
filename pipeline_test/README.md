@@ -1,14 +1,14 @@
 # Pipeline Test
 
 ## Overview
-`pipeline_test` là môi trường **end-to-end** để kiểm thử toàn bộ luồng AI trong hệ thống **Edge AI Vehicle Access System**. Pipeline này kết hợp:
+`pipeline_test` is an **end-to-end validation environment** for the full AI workflow in the **Edge AI Vehicle Access System**. It integrates:
 
-- **YOLOv5n ONNX** để phát hiện xe và biển số.
-- **ByteTrack** để theo dõi phương tiện theo thời gian thực.
-- **CRNN/PaddleOCR ONNX** để nhận dạng ký tự biển số.
-- **FastAPI** để stream video, xử lý RFID và phục vụ web dashboard.
+- **YOLOv5n ONNX** for vehicle and license plate detection.
+- **ByteTrack** for real-time tracking.
+- **CRNN/PaddleOCR ONNX** for license plate recognition.
+- **FastAPI** for video streaming, RFID handling, and web dashboard services.
 
-Mục tiêu của thư mục này là cung cấp **một bản chạy thử hoàn chỉnh**, dễ triển khai trên edge device và có thể quan sát trực tiếp kết quả qua trình duyệt.
+The goal of this folder is to provide a **complete, runnable pipeline** that is easy to deploy on edge devices while allowing live monitoring through a browser.
 
 ---
 
@@ -16,53 +16,53 @@ Mục tiêu của thư mục này là cung cấp **một bản chạy thử hoà
 
 ```
 ESP32-CAM ──> FastAPI (main.py)
-               ├─ detector.py  (YOLOv5n ONNX)
-               ├─ tracker.py   (ByteTrack + OCR voting)
-               ├─ plate_cropper.py (crop + align)
-               └─ ocr.py       (CRNN/PaddleOCR ONNX)
+               ├─ detector.py      (YOLOv5n ONNX)
+               ├─ tracker.py       (ByteTrack + OCR voting)
+               ├─ plate_cropper.py (crop + alignment)
+               └─ ocr.py           (CRNN/PaddleOCR ONNX)
 ```
 
 ---
 
 ## File Structure
 
-| File | Mô tả |
-|------|------|
-| `main.py` | FastAPI server, xử lý camera, websocket, DB, OCR pipeline |
-| `detector.py` | Wrapper YOLOv5n ONNX + class-aware NMS |
-| `tracker.py` | ByteTrack + chống nhấp nháy OCR, lọc hướng di chuyển |
+| File | Description |
+|------|-------------|
+| `main.py` | FastAPI server, camera loop, websocket, DB, OCR pipeline |
+| `detector.py` | YOLOv5n ONNX wrapper with class-aware NMS |
+| `tracker.py` | ByteTrack + OCR de-flicker voting + direction filtering |
 | `ocr.py` | OCR ONNX (CTC decode) |
-| `plate_cropper.py` | Cắt biển số, căn chỉnh nghiêng |
-| `index.html` | Dashboard hiển thị live stream |
-| `register.html` | Giao diện đăng ký RFID |
-| `script.js` | WebSocket + điều khiển UI |
-| `style.css` | Style UI |
-| `models/` | Thư mục chứa model ONNX |
-| `static/` | Ảnh chụp và ảnh crop |
+| `plate_cropper.py` | Plate crop + skew alignment |
+| `index.html` | Live dashboard UI |
+| `register.html` | RFID registration UI |
+| `script.js` | WebSocket + UI logic |
+| `style.css` | UI styling |
+| `models/` | ONNX model directory |
+| `static/` | Snapshots and cropped plate images |
 
 ---
 
 ## Quick Start
 
-### 1. Cài đặt môi trường
+### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Chuẩn bị model
-Đặt các model vào thư mục `pipeline_test/models/`:
+### 2. Prepare models
+Place the following files in `pipeline_test/models/`:
 
-- `best.onnx` (YOLOv5n detect: car, motorbike, plate)
+- `best.onnx` (YOLOv5n detector: car, motorbike, plate)
 - `rec_model.onnx` (OCR CRNN/PaddleOCR)
 
-### 3. Chạy server
+### 3. Run the server
 ```bash
 cd pipeline_test
 python main.py
 ```
 
-### 4. Mở dashboard
-Truy cập:
+### 4. Open dashboard
+Visit:
 ```
 http://localhost:8000
 ```
@@ -71,14 +71,14 @@ http://localhost:8000
 
 ## Notes & Best Practices
 
-- **Không bật fliplr** khi train model biển số để tránh đảo chữ.
-- Nếu biển số nhỏ, nên tăng `img_size` khi train (768 hoặc 960).
-- Trong `detector.py`, threshold mặc định là `0.4` cho confidence/NMS; có thể giảm nếu biển số bị bỏ sót.
-- `tracker.py` có cơ chế **OCR voting + lock** để chống nhấp nháy chữ.
+- **Disable fliplr** when training plate detectors to avoid inverted characters.
+- If plates are small, increase training `img_size` (768 or 960).
+- In `detector.py`, the default confidence/NMS threshold is `0.4`; lower it if plates are missed.
+- `tracker.py` uses **OCR voting + lock** to prevent text flicker.
 
 ---
 
-## Dependencies (gợi ý)
+## Dependencies (suggested)
 
 - `fastapi`, `uvicorn`
 - `onnxruntime`
@@ -90,14 +90,14 @@ http://localhost:8000
 
 ## Output
 
-Sau khi chạy, hệ thống sẽ:
-- Stream video live với bounding box + ID.
-- Hiển thị kết quả OCR trực tiếp.
-- Lưu ảnh chụp + crop vào `static/`.
-- Ghi log vào PostgreSQL.
+When running, the system will:
+- Stream live video with bounding boxes + IDs.
+- Display OCR results in real time.
+- Save snapshots and crops to `static/`.
+- Write logs into PostgreSQL.
 
 ---
 
 ## License
 
-Tuân thủ license chính của repo: **AGPL-3.0**.
+Follows the repository license: **AGPL-3.0**.
