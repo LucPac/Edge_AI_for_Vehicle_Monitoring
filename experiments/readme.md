@@ -29,5 +29,5 @@ The most best models from local testing are converted to **ONNX** format to achi
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | **[MobileNet (CRNN)](models/crnn/trainCRNN_paddle_scratch_mv3large_none_bilstm_ctc)** | 93.3% | 61.1 ms | 16.4 | 5.78 MB | Awaiting edge testing. |
 | **[ResNet (CRNN)](models/crnn/trainCRNN_paddle_scratch_r34_vd_none_bilstm_ctc)** | 94.6% | 268.9 ms | 2.7 | 95.7 MB | Dropped due to low local accuracy. |
-| **[SVTR_LCNet (PP-OCRv3)](models/svtr/trainSVTRLCNet_paddle_latinppocrv3)** | 97.5 | 137.3 ms | 7.28 | 8.7 MB | Target model for final deployment. |
-| **[SVTR_LCNet (PP-OCRv4)](models/svtr/trainSVTRLCNet_paddle_enppocrv4)** | 98.2 | 177.4 ms | 5.6 | 7.4 MB | Target model for final deployment. |
+| **[SVTR_LCNet (PP-OCRv3)](models/svtr/trainSVTRLCNet_paddle_latinppocrv3)** | 97.5% | 137.3 ms | 7.3 | 8.7 MB | Target model for final deployment. |
+| **[SVTR_LCNet (PP-OCRv4)](models/svtr/trainSVTRLCNet_paddle_enppocrv4)** | 98.2% | 177.4 ms | 5.6 | 7.4 MB | Target model for final deployment. |
