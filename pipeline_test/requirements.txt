@@ -1,0 +1,13 @@
+# Web & API Server
+fastapi
+uvicorn[standard]
+pydantic
+
+# Computer Vision & AI Models
+opencv-python
+numpy
+onnxruntime
+supervision
+
+# Database
+psycopg2-binary

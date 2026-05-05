@@ -1,103 +1,133 @@
-# Pipeline Test
+# Edge AI for Vehicle Monitoring - Backend Pipeline
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-00a393.svg)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.8.0-red.svg)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15.0-336791.svg)
+![ONNX](https://img.shields.io/badge/ONNX_Runtime-1.15-005ced.svg)
 
 ## Overview
-`pipeline_test` is an **end-to-end validation environment** for the full AI workflow in the **Edge AI Vehicle Access System**. It integrates:
 
-- **YOLOv5n ONNX** for vehicle and license plate detection.
-- **ByteTrack** for real-time tracking.
-- **CRNN/PaddleOCR ONNX** for license plate recognition.
-- **FastAPI** for video streaming, RFID handling, and web dashboard services.
+This repository contains the backend pipeline for the **Edge AI for Vehicle Monitoring** system. Built with FastAPI, it serves as the central hub connecting IoT edge devices (ESP32, ESP32-CAM) with deep learning models (YOLO, CRNN) and a PostgreSQL database to create a fully automated, real-time smart parking management system.
 
-The goal of this folder is to provide a **complete, runnable pipeline** that is easy to deploy on edge devices while allowing live monitoring through a browser.
+## Key Features
 
----
+* **Real-time Object Detection:** Integrates a lightweight YOLO model via ONNX Runtime to detect vehicles and license plates with minimal latency.
+* **Automated License Plate Recognition (ALPR):** Utilizes a CRNN-based OCR model combined with geometric image alignment algorithms for high-accuracy text extraction.
+* **Hardware Synchronization:** Seamlessly communicates with ESP32 microcontrollers for RFID scanning and ESP32-CAM for continuous video streaming.
+* **Live Dashboard Integration:** Uses WebSockets to broadcast real-time parking events, images, and OCR results to the frontend dashboard without requiring page reloads.
+* **Clean Architecture:** Strictly follows the *Separation of Concerns* principle, dividing the system into distinct, maintainable modules (AI, Services, API, Database).
 
-## Pipeline Architecture
+## Project Structure
 
+```text
+pipeline_test/
+├── main.py                 # FastAPI application entry point & server config
+├── config.py               # Global configurations & constants (DB, Models, IP)
+├── database.py             # PostgreSQL connection pool
+├── models.py               # Pydantic data validation models
+├── requirements.txt        # Python dependencies
+├── ai/                     # Artificial Intelligence Module
+│   ├── detection.py        # YOLO object detection wrapper
+│   ├── recognition.py      # CRNN OCR processing
+│   └── image_processing.py # Image alignment, cropping, and filtering
+├── services/               # Core Business Logic & Background Tasks
+│   ├── camera.py           # Background video streaming & frame caching
+│   ├── vehicle.py          # ALPR logic triggered by RFID events
+│   └── websocket.py        # Real-time WebSocket connection manager
+├── api/                    # Application Programming Interfaces
+│   ├── routes.py           # RESTful endpoints (Swipe, Register, Logs)
+│   └── video.py            # MJPEG video streaming endpoints
+└── static/                 # Frontend assets and generated media
+    ├── images/             # Full captured frames
+    ├── crops/              # Cropped license plate images
+    └── index.html          # Web Dashboard
 ```
-ESP32-CAM ──> FastAPI (main.py)
-               ├─ detector.py      (YOLOv5n ONNX)
-               ├─ tracker.py       (ByteTrack + OCR voting)
-               ├─ plate_cropper.py (crop + alignment)
-               └─ ocr.py           (CRNN/PaddleOCR ONNX)
+
+## Installation & Setup
+
+### 1. Prerequisites
+
+* Python 3.10 or higher.
+* PostgreSQL installed and running.
+* Edge AI models (`best.onnx` and `rec_model.onnx`) placed inside the `models/` directory.
+
+### 2. Environment Setup
+
+Clone the repository and navigate to the project directory:
+
+```bash
+git clone [https://github.com/LucPac/Edge_AI_for_Vehicle_Monitoring.git](https://github.com/LucPac/Edge_AI_for_Vehicle_Monitoring.git)
+cd Edge_AI_for_Vehicle_Monitoring/pipeline_test
 ```
 
----
+Create and activate a virtual environment:
 
-## File Structure
+```bash
+# Windows
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 
-| File | Description |
-|------|-------------|
-| `main.py` | FastAPI server, camera loop, websocket, DB, OCR pipeline |
-| `detector.py` | YOLOv5n ONNX wrapper with class-aware NMS |
-| `tracker.py` | ByteTrack + OCR de-flicker voting + direction filtering |
-| `ocr.py` | OCR ONNX (CTC decode) |
-| `plate_cropper.py` | Plate crop + skew alignment |
-| `index.html` | Live dashboard UI |
-| `register.html` | RFID registration UI |
-| `script.js` | WebSocket + UI logic |
-| `style.css` | UI styling |
-| `models/` | ONNX model directory |
-| `static/` | Snapshots and cropped plate images |
+# Linux/macOS
+python3 -m venv venv
+source venv/bin/activate
+```
 
----
+Install the required dependencies:
 
-## Quick Start
-
-### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Prepare models
-Place the following files in `pipeline_test/models/`:
+### 3. Database Configuration
 
-- `best.onnx` (YOLOv5n detector: car, motorbike, plate)
-- `rec_model.onnx` (OCR CRNN/PaddleOCR)
+Update the PostgreSQL credentials in `config.py` to match your local database setup:
 
-### 3. Run the server
+```python
+DB_CONFIG = {
+    "dbname": "P_Dashboard",
+    "user": "postgres",
+    "password": "your_password", 
+    "host": "localhost",
+    "port": "5432"
+}
+```
+
+## How to Run the Complete Pipeline
+
+Follow these steps to start the entire vehicle monitoring pipeline (Server + Web + Hardware):
+
+### Step 1: Start the Backend Server
+
+Ensure your virtual environment is activated. Run the FastAPI server and expose it to your local network so the ESP32 devices can connect:
+
 ```bash
-cd pipeline_test
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. Open dashboard
-Visit:
-```
-http://localhost:8000
-```
+*Note: Once started, the terminal will display your local network IP address (e.g., `http://192.168.1.xxx:8000/`). Keep this terminal open.*
 
----
+### Step 2: Access the Web Dashboard
 
-## Notes & Best Practices
+* **On your main laptop:** Open your browser and go to `http://localhost:8000/`
+* **On your mobile/other devices:** Ensure you are connected to the same Wi-Fi network and access the IP address shown in your terminal.
 
-- **Disable fliplr** when training plate detectors to avoid inverted characters.
-- If plates are small, increase training `img_size` (768 or 960).
-- In `detector.py`, the default confidence/NMS threshold is `0.4`; lower it if plates are missed.
-- `tracker.py` uses **OCR voting + lock** to prevent text flicker.
+### Step 3: Power Up the Edge Devices
 
----
+1. **ESP32-CAM:** Power it on to start the live video stream. Check the dashboard to verify that the camera feed is running smoothly.
+2. **ESP32 (RFID Reader):** Power it on and wait for it to connect to the Wi-Fi. The Serial Monitor will display `[+] Da ket noi WiFi!` when ready.
 
-## Dependencies (suggested)
+### Step 4: Test the Pipeline
 
-- `fastapi`, `uvicorn`
-- `onnxruntime`
-- `opencv-python`
-- `supervision`
-- `psycopg2`
+1. **Trigger:** Swipe an RFID card on the RC522 reader.
+2. **Transmission:** The ESP32 sends the RFID code to the backend server via a POST request.
+3. **AI Processing:** The server immediately captures a frame from the ESP32-CAM stream, passes it through the YOLO model for plate detection, and uses the CRNN model for OCR recognition.
+4. **Real-time Update:** The server saves the data to PostgreSQL and broadcasts the event. The Web Dashboard instantly updates with the vehicle's image, the cropped license plate, and the extracted text via WebSockets.
 
----
+## API Reference
 
-## Output
-
-When running, the system will:
-- Stream live video with bounding boxes + IDs.
-- Display OCR results in real time.
-- Save snapshots and crops to `static/`.
-- Write logs into PostgreSQL.
-
----
-
-## License
-
-Follows the repository license: **AGPL-3.0**.
+* `GET /video_feed`: Streams MJPEG video frames with YOLO bounding boxes.
+* `POST /api/swipe`: Triggered by ESP32 via RFID swipe. Captures frame, runs ALPR, updates DB, and broadcasts event via WS.
+* `POST /api/register`: Registers a new RFID tag and links it to a user and vehicle plate.
+* `GET /api/logs`: Retrieves the recent parking history for the dashboard.
+* `WS /ws`: WebSocket endpoint for real-time frontend updates.
