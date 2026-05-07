@@ -1,0 +1,13 @@
+train: /content/dataset/train/images
+val: /content/dataset/valid/images
+test: /content/dataset/test/images
+
+nc: 3
+names: ['car', 'motorcycle', 'plate']
+
+roboflow:
+  workspace: datnguyentan
+  project: vietnam-license-plate-ver1
+  version: 4
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/datnguyentan/vietnam-license-plate-ver1/dataset/4
