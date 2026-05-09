@@ -14,7 +14,7 @@ class YOLODetector:
         height, width = img.shape[:2]
         max_dim = max(width, height)
 
-        # --- TIỀN XỬ LÝ (Padding vuông giữ đúng tỷ lệ) ---
+        # --- TIỀN XỬ LÝ ---
         base_padded = np.zeros((max_dim, max_dim, 3), dtype=np.uint8)
         base_padded[0:height, 0:width] = img
 
@@ -26,12 +26,12 @@ class YOLODetector:
         # --- CHẠY YOLO ---
         preds = self.session.run(None, {self.input_name: input_tensor})[0]
 
-        # --- TỐI ƯU HÓA MA TRẬN NUMPY (Tuyệt chiêu của ông) ---
         factor = max_dim / float(self.input_shape[1])
         TARGET_CLASSES = np.array([0, 1, 2])
 
         predictions = preds[0]
-        valid_preds = predictions[predictions[:, 4] > 0.4]
+        # Vẫn giữ ngưỡng 15% để hệ thống nhìn xa hết cỡ
+        valid_preds = predictions[predictions[:, 4] > 0.15]
 
         if len(valid_preds) == 0:
             return sv.Detections.empty()
@@ -41,7 +41,7 @@ class YOLODetector:
         max_class_scores = np.max(class_scores_matrix, axis=1)
         confidences_array = valid_preds[:, 4] * max_class_scores
 
-        mask = (confidences_array > 0.4) & np.isin(class_ids_array, TARGET_CLASSES)
+        mask = (confidences_array > 0.15) & np.isin(class_ids_array, TARGET_CLASSES)
 
         final_preds = valid_preds[mask]
         final_confs = confidences_array[mask]
@@ -68,7 +68,7 @@ class YOLODetector:
             cls_id = class_ids[i]
             shifted_boxes.append([boxes[i][0] + cls_id * max_wh, boxes[i][1] + cls_id * max_wh, boxes[i][2], boxes[i][3]])
 
-        indices = cv2.dnn.NMSBoxes(shifted_boxes, confidences, 0.4, 0.4)
+        indices = cv2.dnn.NMSBoxes(shifted_boxes, confidences, 0.15, 0.4)
 
         if len(indices) == 0:
             return sv.Detections.empty()
@@ -78,9 +78,50 @@ class YOLODetector:
         final_confs = np.array(confidences)[idx]
         final_class_ids = np.array(class_ids)[idx]
 
-        # Đổi [x, y, w, h] sang [x1, y1, x2, y2]
         xyxy = final_boxes.copy()
         xyxy[:, 2] += xyxy[:, 0]
         xyxy[:, 3] += xyxy[:, 1]
+
+        # ========================================================
+        # --- BỘ LỌC XÓA BOX LỒNG NHAU (CHỐNG ẢO GIÁC 2 KHUNG) ---
+        # ========================================================
+        final_keep = []
+        for i in range(len(xyxy)):
+            keep = True
+            box1_area = (xyxy[i, 2] - xyxy[i, 0]) * (xyxy[i, 3] - xyxy[i, 1])
+            
+            for j in range(len(xyxy)):
+                if i == j: continue
+                
+                # Bỏ qua không xét lồng nhau với Biển số (Class ID = 2)
+                if final_class_ids[i] == 2 or final_class_ids[j] == 2:
+                    continue
+
+                box2_area = (xyxy[j, 2] - xyxy[j, 0]) * (xyxy[j, 3] - xyxy[j, 1])
+                
+                # Nếu box(i) nhỏ hơn box(j), kiểm tra xem i có nằm trong j không
+                if box1_area < box2_area:
+                    ix1 = max(xyxy[i, 0], xyxy[j, 0])
+                    iy1 = max(xyxy[i, 1], xyxy[j, 1])
+                    ix2 = min(xyxy[i, 2], xyxy[j, 2])
+                    iy2 = min(xyxy[i, 3], xyxy[j, 3])
+
+                    inter_w = max(0, ix2 - ix1)
+                    inter_h = max(0, iy2 - iy1)
+                    
+                    if inter_w > 0 and inter_h > 0:
+                        inter_area = inter_w * inter_h
+                        # Nếu bị nuốt hơn 70% diện tích -> Loại bỏ box nhỏ
+                        if inter_area / box1_area > 0.7:
+                            keep = False
+                            break
+                            
+            if keep:
+                final_keep.append(i)
+
+        # Lọc lại mảng kết quả cuối cùng
+        xyxy = xyxy[final_keep]
+        final_confs = final_confs[final_keep]
+        final_class_ids = final_class_ids[final_keep]
 
         return sv.Detections(xyxy=xyxy, confidence=final_confs, class_id=final_class_ids)
