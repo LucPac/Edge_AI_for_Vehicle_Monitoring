@@ -13,15 +13,14 @@ def is_valid_plate(text):
 
 class TrafficTracker:
     def __init__(self, green_points, red_points):
-        # HẠ NGƯỠNG XUỐNG CỰC ĐẠI: Chỉ cần YOLO tự tin 15% là bắt luôn! (Bắt cực xa)
         self.tracker = sv.ByteTrack(
             track_activation_threshold=0.15, 
-            lost_track_buffer=60,
+            lost_track_buffer=60, # Nhớ mặt chiếc xe tới 60 frame dù YOLO có bị mù
             minimum_matching_threshold=0.3  
         )
 
-        self.green_zone = sv.PolygonZone(polygon=green_points) # xe vào
-        self.red_zone = sv.PolygonZone(polygon=red_points) # xe ra
+        self.green_zone = sv.PolygonZone(polygon=green_points) 
+        self.red_zone = sv.PolygonZone(polygon=red_points) 
 
         self.box_annotator = sv.BoxAnnotator(thickness=2)
         self.label_annotator = sv.LabelAnnotator(text_thickness=1, text_scale=0.5)
@@ -48,23 +47,30 @@ class TrafficTracker:
         return direction
 
     def update_and_draw(self, frame, vehicle_detections, plate_detections, extract_plate_text_func):
-        if len(vehicle_detections) == 0:
+        # ❌ ĐÃ XÓA LỆNH "RETURN FRAME" Ở ĐÂY ĐỂ TRACKER LÀM VIỆC ĐỘC LẬP!
+        
+        # Cho Tracker tự dự đoán vị trí kể cả khi YOLO (vehicle_detections) bị rỗng
+        tracked_vehicles = self.tracker.update_with_detections(detections=vehicle_detections)
+        
+        # Nếu Tracker cũng mất dấu chiếc xe luôn thì mới không vẽ gì cả
+        if len(tracked_vehicles) == 0:
             return frame
 
-        tracked_vehicles = self.tracker.update_with_detections(detections=vehicle_detections)
         is_in_green = self.green_zone.trigger(detections=tracked_vehicles)
         is_in_red = self.red_zone.trigger(detections=tracked_vehicles)
 
         labels = []
         warning_flag = False
+        
+        # Gia cố chống lỗi: Đảm bảo luôn có class_id kể cả khi Tracker tự dự đoán
+        class_ids = tracked_vehicles.class_id
+        if class_ids is None:
+            class_ids = [0] * len(tracked_vehicles.tracker_id)
 
-        # ĐÃ SỬA: Lấy thêm class_id từ tracked_vehicles
-        for i, (tracker_id, v_box, class_id) in enumerate(zip(tracked_vehicles.tracker_id, tracked_vehicles.xyxy, tracked_vehicles.class_id)):
+        for i, (tracker_id, v_box, class_id) in enumerate(zip(tracked_vehicles.tracker_id, tracked_vehicles.xyxy, class_ids)):
             cy = (v_box[1] + v_box[3]) / 2
             direction = self.get_direction(tracker_id, cy)
             
-            # XÁC ĐỊNH TÊN LOẠI XE DỰA VÀO CLASS_ID CỦA YOLO (0: Car, 1: Motorcycle)
-            # Lưu ý: Cần đảm bảo ID này khớp với file config.py của bạn
             vehicle_type = "Car" if class_id == 0 else ("Motorcycle" if class_id == 1 else "Vehicle")
 
             if tracker_id not in self.vehicle_ocr_cache:
@@ -103,7 +109,6 @@ class TrafficTracker:
                                     self.vehicle_is_locked[tracker_id] = True
                         break 
 
-            # ĐÃ SỬA: Thay thế chữ ID thành tên xe (Car / Motorcycle)
             plate_text = self.vehicle_ocr_cache[tracker_id]
             display_text = f"{vehicle_type} | {plate_text}" if plate_text else f"{vehicle_type}"
 
