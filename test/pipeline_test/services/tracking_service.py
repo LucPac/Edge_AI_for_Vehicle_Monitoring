@@ -105,8 +105,9 @@ class TrafficTracker:
                                 most_common_text, count = Counter(self.vehicle_ocr_history[tracker_id]).most_common(1)[0]
                                 self.vehicle_ocr_cache[tracker_id] = most_common_text
 
-                                if count >= 2:
+                                if count >= 3:
                                     self.vehicle_is_locked[tracker_id] = True
+                                    print(f"🔒 [ĐÃ KHÓA] ID {tracker_id}: {most_common_text}")
                         break 
 
             plate_text = self.vehicle_ocr_cache[tracker_id]
