@@ -2,6 +2,7 @@
 import socket
 import os
 import threading
+import sqlite3
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +11,27 @@ from fastapi.responses import RedirectResponse
 from api.routes import router as api_router
 from api.video import router as video_router
 from services.camera import camera_loop
+
+def init_db():
+    conn = sqlite3.connect("./parking.db")
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS parking_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rfid_code TEXT,
+            plate_in TEXT,
+            image_in_url TEXT,
+            time_in DATETIME,
+            plate_out TEXT,
+            image_out_url TEXT,
+            time_out DATETIME
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+# Gọi hàm ngay trước khi tạo app
+init_db()
 
 app = FastAPI(title="Hệ thống Quản lý Bãi đỗ xe thông minh")
 

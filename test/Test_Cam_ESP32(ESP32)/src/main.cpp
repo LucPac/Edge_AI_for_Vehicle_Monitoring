@@ -12,7 +12,7 @@ const char* password = "1234567891011";
 
 // ĐÂY LÀ ĐỊA CHỈ IP CỦA MÁY TÍNH (LAPTOP) CHẠY CODE PYTHON
 // Port 5000 là port của Flask server.
-const char* serverName = "http://192.168.1.11:8000/api/swipe"; 
+const char* serverName = "http://192.168.1.87:8000/api/swipe"; 
 
 // ==========================================================
 // 2. KHAI BÁO CHÂN RFID RC522
@@ -20,6 +20,10 @@ const char* serverName = "http://192.168.1.11:8000/api/swipe";
 #define SS_PIN  5
 #define RST_PIN 22
 MFRC522 rfid(SS_PIN, RST_PIN);
+
+//SCK  D18
+//MOSI D23
+//MISO D19
 
 void setup() {
   Serial.begin(115200);

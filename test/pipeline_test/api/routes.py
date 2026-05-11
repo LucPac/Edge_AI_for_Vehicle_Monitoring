@@ -16,6 +16,16 @@ from services.camera import get_current_frame
 
 router = APIRouter()
 
+# Hàm phụ trợ chuyển đổi chuỗi thời gian của SQLite thành Datetime
+def parse_sqlite_time(time_val):
+    if not time_val: return None
+    if isinstance(time_val, str):
+        try:
+            return datetime.strptime(time_val, "%Y-%m-%d %H:%M:%S.%f")
+        except ValueError:
+            return datetime.strptime(time_val, "%Y-%m-%d %H:%M:%S")
+    return time_val
+
 @router.post("/api/swipe")
 async def handle_rfid_swipe(data: RFIDData):
     rfid = data.rfid_code
@@ -34,18 +44,19 @@ async def handle_rfid_swipe(data: RFIDData):
     warning_msg = None
     
     try:
-        # FIX: Bỏ điều kiện status
+        # THAY %s BẰNG ?
         cur.execute("""
             SELECT id, plate_in, image_in_url, time_in, plate_out 
             FROM parking_logs 
-            WHERE rfid_code = %s 
+            WHERE rfid_code = ? 
             ORDER BY time_in DESC LIMIT 1
         """, (rfid,))
         record = cur.fetchone()
         response_data = {}
 
         if record:
-            log_id, plate_in, image_in_url, time_in, plate_out = record
+            log_id, plate_in, image_in_url, time_in_raw, plate_out = record
+            time_in = parse_sqlite_time(time_in_raw)
             
             # Nếu plate_out chưa có = xe đang trong bãi → XE RA
             if plate_out is None:
@@ -61,11 +72,12 @@ async def handle_rfid_swipe(data: RFIDData):
                 if clean_out != clean_in:
                     warning_msg = "BIỂN SỐ VÀO VÀ RA KHÔNG KHỚP NHAU!"
 
+                # THAY %s BẰNG ?
                 cur.execute("""
                     UPDATE parking_logs 
-                    SET plate_out = %s, image_out_url = %s, time_out = %s 
-                    WHERE id = %s
-                """, (plate_out_new, full_img_url, time_out, log_id))
+                    SET plate_out = ?, image_out_url = ?, time_out = ? 
+                    WHERE id = ?
+                """, (plate_out_new, full_img_url, time_out.strftime("%Y-%m-%d %H:%M:%S"), log_id))
                 
                 crop_in_url = "https://placehold.co/200x80/1a1a1a/475569?text=No+Crop"
                 try:
@@ -85,13 +97,12 @@ async def handle_rfid_swipe(data: RFIDData):
             else:
                 # Xe đã ra rồi → Tạo record mới cho xe vào
                 full_img_url, crop_img_url, plate_in_new = process_vehicle_image(rfid, "in")
+                time_in_new = datetime.now()
 
                 cur.execute("""
-                    INSERT INTO parking_logs (rfid_code, plate_in, image_in_url) 
-                    VALUES (%s, %s, %s) 
-                    RETURNING time_in, id
-                """, (rfid, plate_in_new, full_img_url))
-                time_in_new, _ = cur.fetchone()
+                    INSERT INTO parking_logs (rfid_code, plate_in, image_in_url, time_in) 
+                    VALUES (?, ?, ?, ?) 
+                """, (rfid, plate_in_new, full_img_url, time_in_new.strftime("%Y-%m-%d %H:%M:%S")))
                 
                 response_data = {
                     "action": "IN", "rfid": rfid, "plate_in": plate_in_new,
@@ -102,17 +113,16 @@ async def handle_rfid_swipe(data: RFIDData):
         else:
             # Record mới → XE VÀO
             full_img_url, crop_img_url, plate_in = process_vehicle_image(rfid, "in")
+            time_in_new = datetime.now()
 
             cur.execute("""
-                INSERT INTO parking_logs (rfid_code, plate_in, image_in_url) 
-                VALUES (%s, %s, %s) 
-                RETURNING time_in
-            """, (rfid, plate_in, full_img_url))
-            time_in = cur.fetchone()[0]
+                INSERT INTO parking_logs (rfid_code, plate_in, image_in_url, time_in) 
+                VALUES (?, ?, ?, ?) 
+            """, (rfid, plate_in, full_img_url, time_in_new.strftime("%Y-%m-%d %H:%M:%S")))
             
             response_data = {
                 "action": "IN", "rfid": rfid, "plate_in": plate_in,
-                "img_in": full_img_url, "img_crop_in": crop_img_url, "time_in": time_in.strftime("%H:%M:%S"),
+                "img_in": full_img_url, "img_crop_in": crop_img_url, "time_in": time_in_new.strftime("%H:%M:%S"),
                 "customer_type": customer_type,
                 "warning": warning_msg
             }
@@ -148,15 +158,18 @@ async def get_parking_logs():
         
         logs = []
         for r in rows:
+            time_in = parse_sqlite_time(r[3])
+            time_out = parse_sqlite_time(r[4])
+            
             fee = "-"
-            if r[4] is not None:  # Nếu time_out tồn tại = xe đã ra
+            if time_out is not None:  
                 fee = "5,000 đ"
                 
             logs.append({
                 "id": r[0], "ticket": r[1], "plate": r[2], 
-                "time_in": r[3].strftime("%d/%m/%Y - %H:%M:%S") if r[3] else "--",
-                "time_out": r[4].strftime("%d/%m/%Y - %H:%M:%S") if r[4] else "--",
-                "status": "Hoàn thành" if r[4] else "Đang gửi", 
+                "time_in": time_in.strftime("%d/%m/%Y - %H:%M:%S") if time_in else "--",
+                "time_out": time_out.strftime("%d/%m/%Y - %H:%M:%S") if time_out else "--",
+                "status": "Hoàn thành" if time_out else "Đang gửi", 
                 "customer_type": "Khách Vãng Lai", 
                 "fee": fee
             })
