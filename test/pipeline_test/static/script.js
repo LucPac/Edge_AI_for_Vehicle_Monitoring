@@ -59,8 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Dữ liệu từ Server:", data);
 
         // Hiển thị mã thẻ RFID nếu có
-        if (ticketCodeDisplay && data.rfid_code) {
-            ticketCodeDisplay.innerText = data.rfid_code;
+        if (ticketCodeDisplay && data.rfid) {
+            ticketCodeDisplay.innerText = data.rfid;
         }
 
         // ==================== XỬ LÝ XE VÀO ====================
