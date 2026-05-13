@@ -1,110 +1,113 @@
 # services/camera.py
 import cv2
 import time
-import re
 import threading
 import pathlib
 import numpy as np
-from config import ESP32_CAM_URL, CLASS_MAP, COLOR_MAP, YOLO_MODEL_PATH
+import supervision as sv
+
+from config import YOLO_MODEL_PATH
 from ai.detection import YOLODetector
-from ai.recognition import recognize_onnx
 
-# Nạp "Bảo bối" Tracker của bạn vào đây
-from services.tracking_service import TrafficTracker
-
-# Fix lỗi PosixPath khi chạy model trên Windows
+# Fix lỗi PosixPath khi chạy model ONNX trên Windows
 temp = pathlib.PosixPath
 pathlib.PosixPath = pathlib.WindowsPath
 
-CURRENT_FRAME = None   
-DISPLAY_FRAME = None   
+CURRENT_FRAME_IN, DISPLAY_FRAME_IN = None, None
+CURRENT_FRAME_OUT, DISPLAY_FRAME_OUT = None, None
 ai_lock = threading.Lock()
 
-print("[*] Đang load model YOLO (ONNX) qua ai/detection.py...")
+print("[*] Đang load model YOLO ...")
 detector = YOLODetector(YOLO_MODEL_PATH)
 
-# --- KHỞI TẠO TRACKER VÀ VÙNG DI CHUYỂN ---
-# Chia đôi màn hình camera: Nửa trên là Lối Vào (Green), nửa dưới là Lối Ra (Red)
-# (Bạn có thể điều chỉnh tọa độ này sau khi đặt camera lên sa bàn thực tế)
-GREEN_ZONES = np.array([[0, 0], [1280, 0], [1280, 360], [0, 360]]) 
-RED_ZONES = np.array([[0, 360], [1280, 360], [1280, 720], [0, 720]]) 
+box_annotator = sv.BoxAnnotator(thickness=2)
+label_annotator = sv.LabelAnnotator(text_thickness=1, text_scale=0.5)
 
-tracker = TrafficTracker(green_points=GREEN_ZONES, red_points=RED_ZONES)
+CLASS_NAMES = {0: "Car", 1: "Motorcycle", 2: "Plate"}
 
-def extract_plate_text_wrapper(p_box):
-    """Hàm bọc để cắt ảnh biển số và đưa cho CRNN (Dùng cho Tracker)"""
-    global CURRENT_FRAME
-    if CURRENT_FRAME is None: return ""
-    
-    x1, y1, x2, y2 = map(int, p_box)
-    p = 2
-    h_orig, w_orig, _ = CURRENT_FRAME.shape
-    xmin, ymin = max(0, x1 - p), max(0, y1 - p)
-    xmax, ymax = min(w_orig, x2 + p), min(h_orig, y2 + p)
-    
-    crop_img = CURRENT_FRAME[ymin:ymax, xmin:xmax]
-    if crop_img.size == 0: return ""
-    
-    h, w = crop_img.shape[:2]
-    ratio = w / h if h > 0 else 0
-    raw_text = ""
-    if 0 < ratio < 1.9: # Biển vuông (2 dòng)
-        text1 = recognize_onnx(crop_img[:int(h*0.55), :])
-        text2 = recognize_onnx(crop_img[int(h*0.45):, :])
-        raw_text = text1 + text2
-    else: # Biển dài (1 dòng)
-        raw_text = recognize_onnx(crop_img)
-        
-    clean_text = re.sub(r'[^A-Z0-9]', '', raw_text.upper())
-    return clean_text
+def process_camera(cap, is_in_gate, skip_frames=15):
+    """
+    Luồng xử lý camera độc lập.
+    skip_frames: Số lượng khung hình bỏ qua trước khi cho AI quét 1 lần.
+    """
+    global CURRENT_FRAME_IN, DISPLAY_FRAME_IN, CURRENT_FRAME_OUT, DISPLAY_FRAME_OUT
+    frame_count = 0
+    last_det = None
 
-def camera_loop():
-    global CURRENT_FRAME, DISPLAY_FRAME
-    cap = cv2.VideoCapture(0)    
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)       
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    
     while True:
         ret, frame = cap.read()
-        if ret:
-            CURRENT_FRAME = frame.copy() 
-            display_img = frame.copy()
+        if not ret:
+            time.sleep(0.01)
+            continue
             
+        disp = frame.copy()
+        frame_count += 1
+
+        # Kỹ thuật bóp FPS để giảm tải CPU
+        if frame_count % skip_frames == 0:
             with ai_lock:
-                detections = detector.detect(display_img)
-            
-            if detections is not None:
-                # 1. Tách riêng Detections của Xe (ID 0,1) và Biển số (ID 2)
-                # Lưu ý: Sửa lại ID 0, 1, 2 này cho khớp với file config.py của bạn nhé!
-                vehicle_detections = detections[(detections.class_id == 0) | (detections.class_id == 1)]
-                plate_detections = detections[detections.class_id == 2]
+                last_det = detector.detect(disp)
 
-                # 2. Đưa vào Tracker xử lý toàn bộ logic vẽ và bắt chữ
-                display_img = tracker.update_and_draw(
-                    frame=display_img,
-                    vehicle_detections=vehicle_detections,
-                    plate_detections=plate_detections,
-                    extract_plate_text_func=extract_plate_text_wrapper
-                )
+        # Vẽ Bounding Box nếu có dữ liệu
+        if last_det is not None:
+            disp = box_annotator.annotate(scene=disp, detections=last_det)
+            labels = [CLASS_NAMES.get(c, f"ID: {c}") for c in last_det.class_id]
+            disp = label_annotator.annotate(scene=disp, detections=last_det, labels=labels)
             
-            DISPLAY_FRAME = display_img
+        # Cập nhật ảnh Raw (để chụp Burst) và ảnh Disp (để hiện lên Web)
+        if is_in_gate:
+            CURRENT_FRAME_IN, DISPLAY_FRAME_IN = frame.copy(), disp
         else:
-            time.sleep(1)
-            cap.release()
-            cap = cv2.VideoCapture(0)
+            CURRENT_FRAME_OUT, DISPLAY_FRAME_OUT = frame.copy(), disp
 
-def gen_frames():
-    global DISPLAY_FRAME
+def camera_loop():
+    """Khởi động 2 camera song song với cấu hình FPS riêng biệt"""
+    
+    # Cam Lối Vào
+    cap_in = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+    cap_in.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap_in.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap_in.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+    
+    # Cam Lối Ra 
+    cap_out = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    cap_out.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap_out.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap_out.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+
+    # ==========================================
+    # ⚙️ CẤU HÌNH TỐC ĐỘ QUÉT AI (CHỐNG LAG CPU)
+    # Số càng lớn -> AI quét càng ít -> CPU càng mát (nhưng khung hình bám xe hơi giật)
+    # ==========================================
+    SKIP_IN = 10  # Quét ~1.5 lần/giây (Tối ưu cho cam FHD Lối Vào)
+    SKIP_OUT = 20 # Quét ~3 lần/giây (Tối ưu cho cam VGA Lối Ra)
+
+    # Khởi động 2 luồng độc lập, truyền tham số skip_frames vào
+    threading.Thread(target=process_camera, args=(cap_in, True, SKIP_IN), daemon=True).start()
+    threading.Thread(target=process_camera, args=(cap_out, False, SKIP_OUT), daemon=True).start()
+    
+    while True: 
+        time.sleep(1)
+
+# Các hàm Getter cho Burst Capture
+def get_current_frame_in(): return CURRENT_FRAME_IN
+def get_current_frame_out(): return CURRENT_FRAME_OUT
+
+# Các hàm Streaming cho Web
+def gen_frames_in():
+    global DISPLAY_FRAME_IN
     while True:
-        if DISPLAY_FRAME is not None:
-            ret, buffer = cv2.imencode('.jpg', DISPLAY_FRAME)
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        else:
+        if DISPLAY_FRAME_IN is not None: 
+            ret, buffer = cv2.imencode('.jpg', DISPLAY_FRAME_IN)
+            yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        else: 
             time.sleep(0.01)
 
-def get_current_frame():
-    global CURRENT_FRAME
-    return CURRENT_FRAME
+def gen_frames_out():
+    global DISPLAY_FRAME_OUT
+    while True:
+        if DISPLAY_FRAME_OUT is not None: 
+            ret, buffer = cv2.imencode('.jpg', DISPLAY_FRAME_OUT)
+            yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        else: 
+            time.sleep(0.01)

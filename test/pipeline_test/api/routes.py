@@ -6,13 +6,17 @@ import os
 import json
 import glob
 import re
+import asyncio
 from datetime import datetime
 
 from database import get_db_connection
 from models import RFIDData
 from services.websocket import manager
-from services.vehicle import process_vehicle_image
-from services.camera import get_current_frame
+
+# Import hàm Burst Voting mới
+from services.vehicle import process_vehicle_burst
+# Import 2 hàm lấy ảnh từ 2 camera riêng biệt
+from services.camera import get_current_frame_in, get_current_frame_out
 
 router = APIRouter()
 
@@ -29,14 +33,6 @@ def parse_sqlite_time(time_val):
 @router.post("/api/swipe")
 async def handle_rfid_swipe(data: RFIDData):
     rfid = data.rfid_code
-    current_frame = get_current_frame()
-    
-    if current_frame is not None:
-        cv2.imwrite(f"static/images/{rfid}.jpg", current_frame)
-    else:
-        blank_img = np.zeros((720, 1280, 3), np.uint8)
-        cv2.imwrite(f"static/images/{rfid}.jpg", blank_img)
-
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -44,7 +40,7 @@ async def handle_rfid_swipe(data: RFIDData):
     warning_msg = None
     
     try:
-        # THAY %s BẰNG ?
+        # Kiểm tra trạng thái xe trong CSDL (Vào hay Ra)
         cur.execute("""
             SELECT id, plate_in, image_in_url, time_in, plate_out 
             FROM parking_logs 
@@ -54,74 +50,85 @@ async def handle_rfid_swipe(data: RFIDData):
         record = cur.fetchone()
         response_data = {}
 
-        if record:
+        if record and record[4] is None:
+            # ==========================================
+            # TRƯỜNG HỢP: XE RA KHỎI BÃI
+            # ==========================================
             log_id, plate_in, image_in_url, time_in_raw, plate_out = record
             time_in = parse_sqlite_time(time_in_raw)
+            time_out = datetime.now()
             
-            # Nếu plate_out chưa có = xe đang trong bãi → XE RA
-            if plate_out is None:
-                time_out = datetime.now()
-                duration = time_out - time_in
-                duration_str = f"{int(duration.total_seconds()//3600):02d}:{int((duration.total_seconds()%3600)//60):02d}:{int(duration.total_seconds()%60):02d}"
-                
-                full_img_url, crop_img_url, plate_out_new = process_vehicle_image(rfid, "out")
-                
-                clean_out = re.sub(r'[^A-Z0-9]', '', plate_out_new.upper())
-                clean_in = re.sub(r'[^A-Z0-9]', '', plate_in.upper())
-                
-                if clean_out != clean_in:
-                    warning_msg = "BIỂN SỐ VÀO VÀ RA KHÔNG KHỚP NHAU!"
+            print(f"\n📸 [CAMERA] Bắt đầu chụp Burst LỐI RA cho thẻ {rfid}...")
+            frames_list = []
+            for _ in range(5):
+                f = get_current_frame_out()
+                if f is not None: 
+                    frames_list.append(f.copy())
+                await asyncio.sleep(0.1) # Khoảng cách 0.1s mỗi tấm
+            
+            # Đưa 5 tấm ảnh cho AI đọc và chốt biển số
+            full_img_url, crop_img_url, plate_out_new = process_vehicle_burst(rfid, "out", frames_list)
+            
+            # Cảnh báo nếu biển số Không khớp
+            clean_out = re.sub(r'[^A-Z0-9]', '', plate_out_new.upper())
+            clean_in = re.sub(r'[^A-Z0-9]', '', plate_in.upper())
+            if clean_out != clean_in:
+                warning_msg = "BIỂN SỐ VÀO VÀ RA KHÔNG KHỚP NHAU!"
 
-                # THAY %s BẰNG ?
-                cur.execute("""
-                    UPDATE parking_logs 
-                    SET plate_out = ?, image_out_url = ?, time_out = ? 
-                    WHERE id = ?
-                """, (plate_out_new, full_img_url, time_out.strftime("%Y-%m-%d %H:%M:%S"), log_id))
-                
-                crop_in_url = "https://placehold.co/200x80/1a1a1a/475569?text=No+Crop"
-                try:
+            # Tính toán thời gian gửi
+            duration = time_out - time_in
+            duration_str = f"{int(duration.total_seconds()//3600):02d}:{int((duration.total_seconds()%3600)//60):02d}:{int(duration.total_seconds()%60):02d}"
+            
+            cur.execute("""
+                UPDATE parking_logs 
+                SET plate_out = ?, image_out_url = ?, time_out = ? 
+                WHERE id = ?
+            """, (plate_out_new, full_img_url, time_out.strftime("%Y-%m-%d %H:%M:%S"), log_id))
+            
+            # Tìm lại ảnh crop biển số lúc vào để hiển thị so sánh
+            crop_in_url = "https://placehold.co/200x80/1a1a1a/475569?text=No+Crop"
+            try:
+                # Tìm file có chữ 'burst' để tương thích với cơ chế mới
+                list_of_files = glob.glob(os.path.join("static", "crops", f"{rfid}_in_burst_*.jpg"))
+                if not list_of_files: # Fallback tìm file cơ chế cũ (nếu có)
                     list_of_files = glob.glob(os.path.join("static", "crops", f"{rfid}_in_full_*.jpg"))
-                    if list_of_files:
-                        crop_in_url = f"http://localhost:8000/{max(list_of_files, key=os.path.getctime).replace(os.sep, '/')}"
-                except: 
-                    pass
+                    
+                if list_of_files:
+                    crop_in_url = f"http://localhost:8000/{max(list_of_files, key=os.path.getctime).replace(os.sep, '/')}"
+            except: 
+                pass
 
-                response_data = {
-                    "action": "OUT", "rfid": rfid, "plate_in": plate_in, "plate_out": plate_out_new,
-                    "img_in": image_in_url, "img_out": full_img_url, "img_crop_in": crop_in_url, "img_crop_out": crop_img_url,
-                    "time_in": time_in.strftime("%H:%M:%S"), "time_out": time_out.strftime("%H:%M:%S"), "duration": duration_str,
-                    "customer_type": customer_type,
-                    "warning": warning_msg
-                }
-            else:
-                # Xe đã ra rồi → Tạo record mới cho xe vào
-                full_img_url, crop_img_url, plate_in_new = process_vehicle_image(rfid, "in")
-                time_in_new = datetime.now()
+            response_data = {
+                "action": "OUT", "rfid": rfid, "plate_in": plate_in, "plate_out": plate_out_new,
+                "img_in": image_in_url, "img_out": full_img_url, "img_crop_in": crop_in_url, "img_crop_out": crop_img_url,
+                "time_in": time_in.strftime("%H:%M:%S"), "time_out": time_out.strftime("%H:%M:%S"), "duration": duration_str,
+                "customer_type": customer_type,
+                "warning": warning_msg
+            }
 
-                cur.execute("""
-                    INSERT INTO parking_logs (rfid_code, plate_in, image_in_url, time_in) 
-                    VALUES (?, ?, ?, ?) 
-                """, (rfid, plate_in_new, full_img_url, time_in_new.strftime("%Y-%m-%d %H:%M:%S")))
-                
-                response_data = {
-                    "action": "IN", "rfid": rfid, "plate_in": plate_in_new,
-                    "img_in": full_img_url, "img_crop_in": crop_img_url, "time_in": time_in_new.strftime("%H:%M:%S"),
-                    "customer_type": customer_type,
-                    "warning": warning_msg
-                }
         else:
-            # Record mới → XE VÀO
-            full_img_url, crop_img_url, plate_in = process_vehicle_image(rfid, "in")
+            # ==========================================
+            # TRƯỜNG HỢP: XE VÀO BÃI (Tạo mới)
+            # ==========================================
+            print(f"\n📸 [CAMERA] Bắt đầu chụp Burst LỐI VÀO cho thẻ {rfid}...")
+            frames_list = []
+            for _ in range(5):
+                f = get_current_frame_in()
+                if f is not None: 
+                    frames_list.append(f.copy())
+                await asyncio.sleep(0.1) # Khoảng cách 0.1s mỗi tấm
+
+            # Đưa 5 tấm ảnh cho AI đọc và chốt biển số
+            full_img_url, crop_img_url, plate_in_new = process_vehicle_burst(rfid, "in", frames_list)
             time_in_new = datetime.now()
 
             cur.execute("""
                 INSERT INTO parking_logs (rfid_code, plate_in, image_in_url, time_in) 
                 VALUES (?, ?, ?, ?) 
-            """, (rfid, plate_in, full_img_url, time_in_new.strftime("%Y-%m-%d %H:%M:%S")))
+            """, (rfid, plate_in_new, full_img_url, time_in_new.strftime("%Y-%m-%d %H:%M:%S")))
             
             response_data = {
-                "action": "IN", "rfid": rfid, "plate_in": plate_in,
+                "action": "IN", "rfid": rfid, "plate_in": plate_in_new,
                 "img_in": full_img_url, "img_crop_in": crop_img_url, "time_in": time_in_new.strftime("%H:%M:%S"),
                 "customer_type": customer_type,
                 "warning": warning_msg
@@ -131,6 +138,7 @@ async def handle_rfid_swipe(data: RFIDData):
         cur.close()
         conn.close()
         
+        # Bắn dữ liệu về giao diện Web thông qua Websocket
         await manager.broadcast(json.dumps(response_data))
         return {"status": "success"}
         
