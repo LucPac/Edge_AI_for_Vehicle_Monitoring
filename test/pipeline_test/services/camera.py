@@ -61,9 +61,9 @@ def extract_plate_text_wrapper(p_box):
 def camera_loop():
     global CURRENT_FRAME, DISPLAY_FRAME
     cap = cv2.VideoCapture(0)    
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)       
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)       
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 10)
     
     while True:
         ret, frame = cap.read()
