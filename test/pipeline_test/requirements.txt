@@ -11,3 +11,17 @@ supervision
 
 # Database
 psycopg2-binary
+
+# For Raspberry Pi 
+# # --- Web Server & API ---
+# fastapi
+# uvicorn[standard]
+# websockets
+
+# # --- Xử lý ảnh (Bản Headless siêu nhẹ cho Pi, không dính GUI) ---
+# opencv-python-headless
+# numpy
+
+# # --- AI & Bounding Box ---
+# tflite-runtime
+# supervision

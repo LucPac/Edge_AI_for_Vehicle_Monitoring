@@ -4,8 +4,8 @@
 # 1. CẤU HÌNH CAMERA & ĐƯỜNG DẪN MODEL
 # ==========================================
 ESP32_CAM_URL = "http://192.168.1.15/"
-YOLO_MODEL_PATH = "models/best.onnx"
-CRNN_MODEL_PATH = "models/rec_model.onnx"
+YOLO_MODEL_PATH = "models/best-fp16.tflite"
+CRNN_MODEL_PATH = "models/rec_model_float16.tflite"
 
 # ==========================================
 # 2. CẤU HÌNH NHẬN DIỆN (YOLO)
